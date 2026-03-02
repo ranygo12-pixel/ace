@@ -1,7 +1,7 @@
 ---
 # 1. K3s 버전 설정
 # v1.28.x+k3s1 형식을 정확히 따르고 있습니다.
-k3s_version: "v1.28.7+k3s1"
+k3s_version: "v1.34.4+k3s1"
 
 # 2. 네트워크 CIDR 설정
 # K3s 내장 Flannel 및 Service 대역을 정의합니다.
