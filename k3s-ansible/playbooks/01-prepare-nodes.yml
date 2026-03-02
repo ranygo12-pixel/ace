@@ -28,3 +28,4 @@
   # K3s 설치 전 필수적인 공통 환경만 정리합니다.
   roles:
     - k3s-common
+    - tailscale  # <--- 추가: 서버가 뜨자마자 Tailscale 망에 붙게 합니다.
