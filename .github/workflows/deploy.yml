@@ -2,22 +2,19 @@ name: Provision & Configure K3s
 
 on:
   push:
-    branches: [ "master" ]  # 본인의 메인 브랜치명 확인
-  workflow_dispatch:      # 수동 실행 가능
+    branches: [ "master" ]
+  workflow_dispatch:
 
 jobs:
   # -------------------------------------------------------------------
-  # 1) Terraform Job: 인프라 생성 (Tailscale OIDC 인증 추가)
+  # 1) Terraform Job: 인프라 생성
   # -------------------------------------------------------------------
   terraform:
     name: Provision Infrastructure
     runs-on: [ self-hosted, Linux, X64 ]
-    
-    #[추가]---OIDC 인증을 위한 권한 설정---
     permissions:
-      id-token: write  
+      id-token: write
       contents: read
-      
     env:
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -27,13 +24,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # [추가] Tailscale Auth: Terraform이 Tailscale API(ACL 관리 등)와 통신하거나 
-      # 사설망 상태에서 리소스를 관리하기 위해 선행되어야 함
       - name: Tailscale Auth
         uses: tailscale/github-action@v2
         with:
-          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
-          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          authkey: ${{ secrets.TAILSCALE_AUTHKEY }} # Auth Key 방식 사용
           tags: tag:k3s
 
       - name: Terraform Init
@@ -45,14 +39,13 @@ jobs:
         run: terraform apply -auto-approve
 
   # -------------------------------------------------------------------
-  # 2) Ansible Job: 동적 인벤토리를 이용한 클러스터 구성
+  # 2) Ansible Job: 클러스터 구성 및 앱 배포
   # -------------------------------------------------------------------
   ansible:
     name: Configure K3s cluster & Deploy App
     runs-on: [ self-hosted, Linux, X64 ]
     needs: terraform
     env:
-      # Ansible이 AWS API를 호출하여 노드를 찾기 위해 필요한 인증 정보
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
       AWS_DEFAULT_REGION: ${{ secrets.AWS_DEFAULT_REGION }}
@@ -62,101 +55,35 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-
-      # [추가] Tailscale Auth: Ansible이 Bastion 없이 사설 IP(100.x.x.x)로 
-      # EC2 노드들에 직접 SSH 접속하기 위해 반드시 필요함
       - name: Tailscale Auth
         uses: tailscale/github-action@v2
         with:
-          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
-          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          authkey: ${{ secrets.TAILSCALE_AUTHKEY }} # Runner도 사설망 접속
           tags: tag:k3s
 
-
-
-      # pip3 설치 및 boto3 라이브러리 설치 (가장 중요)
-      - name: Install Python and AWS dependencies
+      - name: Install Dependencies (Python, boto3, jq)
         run: |
-          # pip3가 없는 경우 설치
           sudo apt-get update
-          sudo apt-get install -y python3-pip
-          # Ansible이 사용하는 Python 환경에 boto3 설치
-          python3 -m pip install boto3 botocore
-          # Ansible이 K8s/Helm 명령을 내리기 위한 라이브러리
-          python3 -m pip install kubernetes PyYAML 
-          # K8s 관련 전용 모듈(Collection) 설치
+          sudo apt-get install -y python3-pip jq
+          python3 -m pip install boto3 botocore kubernetes PyYAML
           ansible-galaxy collection install kubernetes.core
 
-      # jq 설치 (API 파싱용)
-      - name: Install jq
-        run: |
-          if ! command -v jq &> /dev/null; then
-            sudo apt-get install -y jq
-          else
-            echo "jq is already installed: $(jq --version)"
-          fi
-
-      # 1. SSH 키 설정 (인증용 키 파일만 생성)
       - name: Setup SSH private key
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.ANSIBLE_PRIVATE_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
 
-# --- 동적 인벤토리 디버그 로그 ---
-      # 2. 전체 자동 배포 스크립트 실행
-      - name: 🔬 Ultimate Forensic Debugging
+      - name: 🔬 Run Deploy Script with Tailscale Key
         working-directory: k3s-ansible
         run: |
-          echo "========================================================="
-          echo "🔎 1. 파이썬 환경의 '진실' (Path & Version)"
-          echo "========================================================="
-          which python3
-          python3 --version
-          python3 -c "import sys; print('Python Path:', sys.path)"
-          
-          echo "========================================================="
-          echo "🔎 2. Boto3 로드 가능 여부 직접 검증 (수동 테스트)"
-          echo "========================================================="
-          # 이 코드가 실패하면 앤서블도 절대 못 읽습니다.
-          python3 -m pip list | grep -E "boto3|botocore|ansible"
-          python3 -c "
-          try:
-              import boto3
-              import botocore
-              print('✅ Boto3 Load Success!')
-              print('Location:', boto3.__file__)
-          except ImportError as e:
-              print(f'❌ Boto3 Load Failed: {e}')
-          "
-
-          echo "========================================================="
-          echo "🔎 3. Ansible Plugin 로더 추적"
-          echo "========================================================="
-          # 앤서블이 플러그인을 찾을 때 뒤져보는 경로들
-          ansible-config dump | grep -E "COLLECTIONS_PATHS|DEFAULT_ROLES_PATH"
-          # 현재 시스템에 'amazon.aws' 컬렉션이 설치되어 있는지 확인
-          ansible-galaxy collection list | grep amazon.aws || echo "❌ Amazon AWS Collection missing!"
-
-          echo "========================================================="
-          echo "🔎 4. 인벤토리 파싱 원시 로그 (Traceback 모드)"
-          echo "========================================================="
-          # ANSIBLE_DEBUG=1은 앤서블 소스코드 내부의 에러 Traceback을 그대로 뱉어냅니다.
-          # 가장 지저분하지만 가장 정확한 '범인'의 이름이 찍힙니다.
-          #export ANSIBLE_DEBUG=1
-          #export ANSIBLE_VERBOSITY=4
-          export ANSIBLE_INVENTORY_ENABLED=aws_ec2,yaml,ini
-          ansible-inventory -i inventory/hosts.aws_ec2.yml --list
-          echo "========================================================="
-          echo "🚀 배포 스크립트 실행 (deploy.sh)"
-          echo "========================================================="
           chmod +x deploy.sh
+          # PYTHONPATH 설정 및 실행
           export PYTHONPATH=$PYTHONPATH:$(python3 -m site --user-site)
           ./deploy.sh
         env:
+          # Ansible이 EC2 내부에서 Tailscale 로그인 시 사용할 키 주입
+          TAILSCALE_AUTHKEY: ${{ secrets.TAILSCALE_AUTHKEY }}
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: ${{ secrets.AWS_DEFAULT_REGION }}
-          # 경로 강제 주입
-          PYTHONPATH: ${{ env.PYTHONPATH }}:$(python3 -m site --user-site)
-          
