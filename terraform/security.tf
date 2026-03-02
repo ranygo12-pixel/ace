@@ -3,12 +3,14 @@ resource "aws_security_group" "server_sg" {
   name   = "server-sg"
   vpc_id = aws_vpc.main.id
 
-  ingress { # SSH 접속
-    from_port   = 22
-    to_port     = 22
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
+  # [수정] 22번 포트를 외부(0.0.0.0/0)에 노출하지 않음
+  # Tailscale 터널을 통해서만 접속
+  # ingress {
+  #   from_port   = 22
+  #   to_port     = 22
+  #   protocol    = "tcp"
+  #   cidr_blocks = ["0.0.0.0/0"] 
+  # }
 
   ingress { # K3s API 서버 (외부 kubectl 제어용)
     from_port   = 6443
