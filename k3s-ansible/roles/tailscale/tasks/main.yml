@@ -1,0 +1,12 @@
+---
+- name: Tailscale 설치
+  shell: curl -fsSL https://tailscale.com/install.sh | sh
+  become: true
+
+- name: Tailscale 네트워크 가입
+  command: >
+    tailscale up 
+    --authkey={{ tailscale_authkey }} 
+    --advertise-tags={{ tailscale_tags }}
+    --accept-dns=true
+  become: true
