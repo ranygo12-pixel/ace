@@ -40,6 +40,7 @@
     # admin 문제 recursive로 해결
     values: "{{ lookup('file', role_path + '/files/custom-values.yaml') | from_yaml | combine(dynamic_values, recursive=True) }}"
     wait: true
+    timeout: "600s"
   become: true # k3s.yaml 읽기 및 Helm 실행 권한 획득
   vars:
     # 실시간으로 변하는 값들을 정의 (values 항목에서 파일 내용과 합쳐짐)
