@@ -58,6 +58,15 @@
   # [기술 포인트] set_fact로 저장된 값은 다음 플레이북(k3s-agent)에서 공유해서 사용할 수 있습니다.
 
 # 7. 기본 네트워크 구성 요소(Flannel) 대기
+
+# ---Flannel 설정 파일이 생성될 때까지 대기 ---
+- name: Wait for Flannel subnet file to be created
+  wait_for:
+    path: /run/flannel/subnet.env
+    state: present
+    timeout: 300
+# -----------------------------
+
 # 쿠버네티스 네트워크 플러그인이 정상 실행될 때까지 기다립니다.
 - name: Wait for Flannel to be ready
   shell: kubectl get pods -n kube-system -l k8s-app=flannel --no-headers | grep -v Running | wc -l
