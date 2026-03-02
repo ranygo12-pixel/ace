@@ -63,10 +63,24 @@ echo "    scp ubuntu@$SERVER_PUBLIC_IP:~/.kube/config ~/.kube/config"
 #echo "    PW:  admin"  # all.yml에서 수정한 경우 해당 값을 입력하세요.
 #echo "----------------------------------------------------------------"
 
-echo ""
 echo "🔍 클러스터 상태 최종 확인 중..."
-# 인벤토리에 정의된 'server' 그룹(그룹명 확인 필요)을 타겟팅합니다.
 ansible servers -i $INV -m shell -a "kubectl get nodes -o wide"
+
+echo ""
+echo "🌐 Nginx 배포 상태 확인 중..."
+ansible servers -i $INV -m shell -a "kubectl get pods -l app=nginx -o wide"
+
+echo "📊 모니터링 대시보드 접속 (Grafana)"
+echo "    URL: http://$SERVER_PUBLIC_IP:32000"
+echo "    ID:  admin"
+echo "    PW:  admin"  # all.yml에서 수정한 경우 해당 값을 입력하세요.
+echo "----------------------------------------------------------------"
+
+echo ""
+echo "🔗 Nginx 접속 주소:"
+#사용자 → Server EC2 직접 접속 → kube-proxy → Nginx Pod
+#Server IP로 직접 접속하는 거라 Server가 죽으면 접속 불가
+echo "    http://$SERVER_PUBLIC_IP:30080"
 
 echo ""
 echo "✅ 클러스터 준비 완료!"
