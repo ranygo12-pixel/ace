@@ -45,3 +45,10 @@ k3s_token: "your-secret-join-token"
 # K3s 내장 etcd(또는 SQLite) 데이터 보존 설정입니다.
 etcd_backup_enabled: true
 backup_retention_days: 7
+
+# 8. Tailscale 설정
+tailscale_authkey: "{{ lookup('env', 'TAILSCALE_AUTHKEY') }}"
+tailscale_tags: "tag:k3s"
+
+# K3s가 Tailscale IP를 주소로 인식하도록 강제 (중요)
+k3s_node_ip: "{{ ansible_host }}"
