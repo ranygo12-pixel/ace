@@ -7,11 +7,17 @@ on:
 
 jobs:
   # -------------------------------------------------------------------
-  # 1) Terraform Job: 인프라 생성 (IP 추출 단계 삭제)
+  # 1) Terraform Job: 인프라 생성 (Tailscale OIDC 인증 추가)
   # -------------------------------------------------------------------
   terraform:
     name: Provision Infrastructure
     runs-on: [ self-hosted, Linux, X64 ]
+    
+    #[추가]---OIDC 인증을 위한 권한 설정---
+    permissions:
+      id-token: write  
+      contents: read
+      
     env:
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -20,6 +26,15 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      # [추가] Tailscale Auth: Terraform이 Tailscale API(ACL 관리 등)와 통신하거나 
+      # 사설망 상태에서 리소스를 관리하기 위해 선행되어야 함
+      - name: Tailscale Auth
+        uses: tailscale/github-action@v2
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:k3s
 
       - name: Terraform Init
         working-directory: terraform
@@ -47,6 +62,18 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+
+      # [추가] Tailscale Auth: Ansible이 Bastion 없이 사설 IP(100.x.x.x)로 
+      # EC2 노드들에 직접 SSH 접속하기 위해 반드시 필요함
+      - name: Tailscale Auth
+        uses: tailscale/github-action@v2
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:k3s
+
+
+
       # pip3 설치 및 boto3 라이브러리 설치 (가장 중요)
       - name: Install Python and AWS dependencies
         run: |
@@ -60,7 +87,7 @@ jobs:
           # K8s 관련 전용 모듈(Collection) 설치
           ansible-galaxy collection install kubernetes.core
 
-      # [추가] jq 설치 (API 파싱용)
+      # jq 설치 (API 파싱용)
       - name: Install jq
         run: |
           if ! command -v jq &> /dev/null; then
@@ -76,7 +103,7 @@ jobs:
           echo "${{ secrets.ANSIBLE_PRIVATE_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
 
-# --- [추가되는 부분] 동적 인벤토리 디버그 로그 ---
+# --- 동적 인벤토리 디버그 로그 ---
       # 2. 전체 자동 배포 스크립트 실행
       - name: 🔬 Ultimate Forensic Debugging
         working-directory: k3s-ansible
