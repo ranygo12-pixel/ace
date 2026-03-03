@@ -14,5 +14,8 @@ variable "k3s_token" {
 }
 
 #Tailscale key 추가 설정
-variable "tailscale_api_key" { type = string, sensitive = true }
+variable "tailscale_api_key" {
+  type      = string
+  sensitive = true
+}
 variable "tailscale_tailnet" { type = string }
