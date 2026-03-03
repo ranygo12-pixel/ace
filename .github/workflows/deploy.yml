@@ -65,11 +65,20 @@ jobs:
       - name: Sync & Apply ACL
         working-directory: terraform/tailscale
         run: |
-          # 1. 기존 ACL 정보를 State로 동기화 (Import)
-          terraform import tailscale_acl.main_acl acl || echo "Import skipped"
+          # 1. 로컬의 꼬인 상태 파일 삭제 및 초기화
+          rm -rf .terraform* terraform.tfstate*
+          terraform init
           
-          # 2. -replace 옵션으로 해시 충돌을 무시하고 강제 적용
-          terraform apply -auto-approve -replace=tailscale_acl.main_acl
+          # 2. 서버의 현재 ACL 상태를 내 로컬로 강제 동기화 (412 에러 해결의 핵심)
+          terraform import tailscale_acl.main_acl acl || echo "Fresh start"
+          
+          # 3. 확정된 상태를 바탕으로 업데이트 적용
+          # 만약 실패할 경우를 대비해 state rm 후 재시도하는 안전장치를 추가합니다.
+          terraform apply -auto-approve || (
+            terraform state rm tailscale_acl.main_acl
+            terraform import tailscale_acl.main_acl acl
+            terraform apply -auto-approve
+          )
 
   # -------------------------------------------------------------------
   # 3) Ansible Job: 클러스터 구성
