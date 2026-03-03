@@ -25,6 +25,12 @@
     kubeconfig: "/etc/rancher/k3s/k3s.yaml"
   become: true # k3s.yaml 파일을 읽기 위해 필요
 
+# [추가] 3.5 K3s API 서버 및 노드 안정화 대기
+- name: ⏳ Wait for K3s API and Nodes to be Ready
+  ansible.builtin.pause:
+    seconds: 60
+  comment: "네트워크 변경 후 API 서버와 노드들이 완전히 안정을 찾을 시간을 줍니다."
+
 # 4. 통합 배포 (lookup을 사용하여 파일 내용 직접 주입)
 - name: Deploy kube-prometheus-stack
   kubernetes.core.helm:
@@ -39,8 +45,11 @@
     # 2. combine()을 사용하여 파일 내용과 아래의 동적 values(Grafana IP 등)를 합칩니다.
     # admin 문제 recursive로 해결
     values: "{{ lookup('file', role_path + '/files/custom-values.yaml') | from_yaml | combine(dynamic_values, recursive=True) }}"
-    wait: true
-    timeout: "600s"
+    # [수정 포인트]
+    # 1. wait를 false로 변경: Helm이 모든 리소스가 뜰 때까지 앤서블을 붙잡아두지 않게 합니다. 
+    #    이렇게 해야 Webhook 통신 지연으로 인한 전체 먹통을 방지할 수 있습니다.
+    wait: false
+    timeout: "900s"
   become: true # k3s.yaml 읽기 및 Helm 실행 권한 획득
   vars:
     # 실시간으로 변하는 값들을 정의 (values 항목에서 파일 내용과 합쳐짐)
