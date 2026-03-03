@@ -12,18 +12,3 @@ variable "k3s_token" {
 	description = "K3s cluster join token"
 	default = "k3s-token-2026-secret" 
 }
-
-#Tailscale key 추가 설정
-variable "ts_client_id" {
-  type      = string
-  sensitive = true
-}
-
-variable "ts_client_secret" {
-  type      = string
-  sensitive = true
-}
-
-variable "ts_tailnet" { 
-  type = string 
-}
