@@ -32,12 +32,14 @@ k3s_server_ports:
   - "10250/tcp"     # Kubelet API (로그 수집, exec 등에 필요)
   - "8472/udp"      # Flannel VXLAN (멀티노드 통신 필수)
   - "2379-2380/tcp" # 고가용성(HA) 구성 시 etcd 통신용
+  - "41641/udp"      # [추가] Tailscale Direct Connection 포트
 
 # k3s_worker_ports -> k3s_agent_ports로 변경
 k3s_agent_ports:
   - "10250/tcp"     # Kubelet API
   - "8472/udp"      # Flannel VXLAN
   - "30000-32767/tcp" # 외부 서비스 노출을 위한 NodePort 대역
+  - "41641/udp"      # [추가] 에이전트 노드들도 직접 통신을 위해 필요함
 
 # 6. 클러스터 인증 토큰
 # Agent가 Server에 조인할 때 사용하는 비밀번호입니다.
