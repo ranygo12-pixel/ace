@@ -8,8 +8,9 @@ terraform {
 }
 
 provider "tailscale" {
-  api_key = var.tailscale_api_key
-  tailnet = var.tailscale_tailnet
+  oauth_client_id     = var.ts_client_id
+  oauth_client_secret = var.ts_client_secret
+  tailnet             = var.ts_tailnet
 }
 
 # 최신 Ubuntu AMI 자동 검색
