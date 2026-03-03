@@ -11,8 +11,8 @@ terraform {
 }
 
 provider "tailscale" {
-  api_key = var.tailscale_api_key
-  tailnet = var.tailscale_tailnet
+  api_key = var.ts_client_secret 
+  tailnet = var.ts_tailnet
 }
 
 # =====================================================
