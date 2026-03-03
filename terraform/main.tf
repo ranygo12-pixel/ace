@@ -1,3 +1,17 @@
+terraform {
+  required_providers {
+    tailscale = {
+      source  = "tailscale/tailscale"
+      version = "~> 0.13.0"
+    }
+  }
+}
+
+provider "tailscale" {
+  api_key = var.tailscale_api_key
+  tailnet = var.tailscale_tailnet
+}
+
 # 최신 Ubuntu AMI 자동 검색
 data "aws_ami" "ubuntu" {
   most_recent = true
