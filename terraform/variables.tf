@@ -24,6 +24,6 @@ variable "ts_client_secret" {
   sensitive = true
 }
 
-variable "tailscale_tailnet" { 
+variable "ts_tailnet" { 
   type = string 
 }
