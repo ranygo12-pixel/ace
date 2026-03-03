@@ -19,10 +19,10 @@ jobs:
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
       AWS_DEFAULT_REGION: ${{ secrets.AWS_DEFAULT_REGION }}
-      # [수정] 테라폼용 OAuth 변수 주입
+      # [수정 완료] variables.tf의 이름들과 정확히 일치시켰습니다.
       TF_VAR_ts_client_id: ${{ secrets.TS_CLIENT_ID }}
       TF_VAR_ts_client_secret: ${{ secrets.TS_CLIENT_SECRET }}
-      TF_VAR_tailscale_tailnet: ${{ secrets.TAILSCALE_TAILNET }}
+      TF_VAR_ts_tailnet: ${{ secrets.TAILSCALE_TAILNET }}
 
     steps:
       - name: Checkout repository
@@ -31,9 +31,9 @@ jobs:
       - name: Tailscale Auth
         uses: tailscale/github-action@v2
         with:
-          # [수정] 러너 접속도 OAuth로 전환
           oauth-client-id: ${{ secrets.TS_CLIENT_ID }}
-          oauth-client-secret: ${{ secrets.TS_CLIENT_SECRET }}
+          # [수정 완료] oauth-client-secret에서 oauth-secret으로 변경
+          oauth-secret: ${{ secrets.TS_CLIENT_SECRET }}
           tags: tag:k3s
 
       - name: Terraform Init
@@ -52,7 +52,6 @@ jobs:
 
       - name: Terraform Apply (Final)
         working-directory: terraform
-        # 전체 리소스를 확정하고 로드밸런서와 Output을 완성합니다.
         run: terraform apply -auto-approve
 
   # -------------------------------------------------------------------
@@ -76,21 +75,18 @@ jobs:
         uses: tailscale/github-action@v2
         with:
           oauth-client-id: ${{ secrets.TS_CLIENT_ID }}
-          oauth-client-secret: ${{ secrets.TS_CLIENT_SECRET }}
+          # [수정 완료] 여기도 oauth-secret으로 변경
+          oauth-secret: ${{ secrets.TS_CLIENT_SECRET }}
           tags: tag:k3s
 
-      # [중요] Ansible이 사용할 1회용 인증키를 실시간으로 생성합니다.
       - name: Generate Temporary Authkey for Ansible
         id: generate_key
         run: |
-          # 1. OAuth 토큰 획득
           TOKEN=$(curl -u "${{ secrets.TS_CLIENT_ID }}:${{ secrets.TS_CLIENT_SECRET }}" -d "grant_type=client_credentials" https://api.tailscale.com/api/v2/oauth/token | jq -r .access_token)
-          # 2. 1회용 임시 키(Ephemeral Key) 생성
           TEMP_KEY=$(curl -u "$TOKEN:" -d '{"capabilities":{"devices":{"create":{"reusable":false,"ephemeral":true,"preauthorized":true,"tags":["tag:k3s"]}}}}' https://api.tailscale.com/api/v2/tailnet/${{ secrets.TAILSCALE_TAILNET }}/keys | jq -r .key)
-          # 3. 생성된 키를 환경 변수에 저장
           echo "TS_TEMP_KEY=$TEMP_KEY" >> $GITHUB_ENV
 
-      - name: Install Dependencies (Python, boto3, jq)
+      - name: Install Dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y python3-pip jq
@@ -105,10 +101,8 @@ jobs:
 
       - name: 🔬 Run Deploy Script
         working-directory: k3s-ansible
-        env:
-          # Ansible의 all.yml({{ lookup('env', 'TAILSCALE_AUTHKEY') }})이 읽을 변수 주입
-          TAILSCALE_AUTHKEY: ${{ env.TS_TEMP_KEY }}
+      
         run: |
           chmod +x deploy.sh
           export PYTHONPATH=$PYTHONPATH:$(python3 -m site --user-site)
-          ./deploy.sh
+          TAILSCALE_AUTHKEY=$TS_TEMP_KEY ./deploy.sh
