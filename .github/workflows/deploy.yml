@@ -7,10 +7,10 @@ on:
 
 jobs:
   # -------------------------------------------------------------------
-  # 1) Terraform Job: 인프라 및 ACL 생성 (OAuth 기반)
+  # 1) AWS Infra Job: 순수 인프라 생성 (VPC, EC2, NLB 등)
   # -------------------------------------------------------------------
-  terraform:
-    name: Provision Infrastructure
+  aws_infra:
+    name: Deploy AWS Infrastructure
     runs-on: [ self-hosted, Linux, X64 ]
     permissions:
       id-token: write
@@ -19,7 +19,30 @@ jobs:
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
       AWS_DEFAULT_REGION: ${{ secrets.AWS_DEFAULT_REGION }}
-      # [수정 완료] variables.tf의 이름들과 정확히 일치시켰습니다.
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Terraform Init
+        working-directory: terraform/aws-infra
+        run: terraform init
+
+      - name: Terraform Apply (AWS)
+        working-directory: terraform/aws-infra
+        run: terraform apply -auto-approve
+
+  # -------------------------------------------------------------------
+  # 2) Tailscale Job: 인프라 확정 후 ACL 설정 (412 에러 해결)
+  # -------------------------------------------------------------------
+  tailscale_config:
+    name: Configure Tailscale ACL
+    needs: aws_infra  # AWS 인프라 작업 완료 후 실행
+    runs-on: [ self-hosted, Linux, X64 ]
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_DEFAULT_REGION: ${{ secrets.AWS_DEFAULT_REGION }}
       TF_VAR_ts_client_id: ${{ secrets.TS_CLIENT_ID }}
       TF_VAR_ts_client_secret: ${{ secrets.TS_CLIENT_SECRET }}
       TF_VAR_ts_tailnet: ${{ secrets.TAILSCALE_TAILNET }}
@@ -32,35 +55,29 @@ jobs:
         uses: tailscale/github-action@v2
         with:
           oauth-client-id: ${{ secrets.TS_CLIENT_ID }}
-          # [수정 완료] oauth-client-secret에서 oauth-secret으로 변경
           oauth-secret: ${{ secrets.TS_CLIENT_SECRET }}
           tags: tag:k3s
 
       - name: Terraform Init
-        working-directory: terraform
+        working-directory: terraform/tailscale
         run: terraform init
 
-      - name: Solve Dependency & Sync ACL
-        working-directory: terraform
+      - name: Sync & Apply ACL
+        working-directory: terraform/tailscale
         run: |
-          # ACL 상태 동기화 (412 에러 방지)
-          terraform state rm tailscale_acl.main_acl || true
-          terraform import -target=tailscale_acl.main_acl tailscale_acl.main_acl acl || true
+          # 1. 기존 ACL 정보를 State로 동기화 (Import)
+          terraform import tailscale_acl.main_acl acl || echo "Import skipped"
           
-          # [핵심] 로드밸런서 참조 오류 방지를 위한 타겟 생성
-          terraform apply -target=aws_instance.k3s_agent -target=tailscale_acl.main_acl -auto-approve || echo "Target apply failed, but continuing..."
-
-      - name: Terraform Apply (Final)
-        working-directory: terraform
-        run: terraform apply -auto-approve
+          # 2. -replace 옵션으로 해시 충돌을 무시하고 강제 적용
+          terraform apply -auto-approve -replace=tailscale_acl.main_acl
 
   # -------------------------------------------------------------------
-  # 2) Ansible Job: 클러스터 구성 (임시 키 생성 로직 포함)
+  # 3) Ansible Job: 클러스터 구성
   # -------------------------------------------------------------------
   ansible:
     name: Configure K3s cluster & Deploy App
     runs-on: [ self-hosted, Linux, X64 ]
-    needs: terraform
+    needs: tailscale_config # ACL 설정까지 성공해야 실행
     env:
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -75,7 +92,6 @@ jobs:
         uses: tailscale/github-action@v2
         with:
           oauth-client-id: ${{ secrets.TS_CLIENT_ID }}
-          # [수정 완료] 여기도 oauth-secret으로 변경
           oauth-secret: ${{ secrets.TS_CLIENT_SECRET }}
           tags: tag:k3s
 
@@ -101,7 +117,6 @@ jobs:
 
       - name: 🔬 Run Deploy Script
         working-directory: k3s-ansible
-      
         run: |
           chmod +x deploy.sh
           export PYTHONPATH=$PYTHONPATH:$(python3 -m site --user-site)
