@@ -37,18 +37,13 @@ jobs:
         working-directory: terraform
         run: terraform init
         
-      # -----------------------------------------------------------
-      # [추가] 기존 Tailscale ACL을 테라폼 상태(State)로 가져오기
-      # 412 Precondition Failed 에러를 해결하기 위한 핵심 단계입니다.
-      # -----------------------------------------------------------
-      - name: Terraform Import ACL
+      # [핵심] 기존의 'grants' 구조를 포함한 현재 서버 상태를 테라폼에게 가르쳐줍니다.
+      - name: Sync Existing ACL
         working-directory: terraform
-        continue-on-error: true # 이미 import 되었을 경우 에러 무시
-        run: terraform import tailscale_acl.main_acl acl
-
-      - name: Terraform Apply
-        working-directory: terraform
-        run: terraform apply -auto-approve
+        continue-on-error: true
+        run: |
+          terraform state rm tailscale_acl.main_acl || true
+          terraform import tailscale_acl.main_acl acl
 
   # -------------------------------------------------------------------
   # 2) Ansible Job: 클러스터 구성 및 앱 배포
