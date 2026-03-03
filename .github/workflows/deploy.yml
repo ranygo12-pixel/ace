@@ -7,7 +7,7 @@ on:
 
 jobs:
   # -------------------------------------------------------------------
-  # 1) Terraform Job: 인프라 생성
+  # 1) Terraform Job: 인프라 및 ACL 생성
   # -------------------------------------------------------------------
   terraform:
     name: Provision Infrastructure
@@ -19,6 +19,9 @@ jobs:
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
       AWS_DEFAULT_REGION: ${{ secrets.AWS_DEFAULT_REGION }}
+      # [수정] Terraform이 ACL을 수정할 수 있도록 관리자 API Key 주입
+      TF_VAR_tailscale_api_key: ${{ secrets.TAILSCALE_API_KEY }}
+      TF_VAR_tailscale_tailnet: ${{ secrets.TAILSCALE_TAILNET }}
 
     steps:
       - name: Checkout repository
@@ -27,7 +30,7 @@ jobs:
       - name: Tailscale Auth
         uses: tailscale/github-action@v2
         with:
-          authkey: ${{ secrets.TAILSCALE_AUTHKEY }} # Auth Key 방식 사용
+          authkey: ${{ secrets.TAILSCALE_AUTHKEY }} # 러너 접속용은 Auth Key 유지
           tags: tag:k3s
 
       - name: Terraform Init
@@ -50,6 +53,9 @@ jobs:
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
       AWS_DEFAULT_REGION: ${{ secrets.AWS_DEFAULT_REGION }}
       ANSIBLE_HOST_KEY_CHECKING: "False"
+      # [추가] Ansible이 EC2 내부에서 사용할 정보들
+      TAILSCALE_AUTHKEY: ${{ secrets.TAILSCALE_AUTHKEY }}
+      TAILSCALE_TAILNET: ${{ secrets.TAILSCALE_TAILNET }}
 
     steps:
       - name: Checkout repository
@@ -58,7 +64,7 @@ jobs:
       - name: Tailscale Auth
         uses: tailscale/github-action@v2
         with:
-          authkey: ${{ secrets.TAILSCALE_AUTHKEY }} # Runner도 사설망 접속
+          authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
           tags: tag:k3s
 
       - name: Install Dependencies (Python, boto3, jq)
@@ -74,16 +80,9 @@ jobs:
           echo "${{ secrets.ANSIBLE_PRIVATE_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
 
-      - name: 🔬 Run Deploy Script with Tailscale Key
+      - name: 🔬 Run Deploy Script
         working-directory: k3s-ansible
         run: |
           chmod +x deploy.sh
-          # PYTHONPATH 설정 및 실행
           export PYTHONPATH=$PYTHONPATH:$(python3 -m site --user-site)
           ./deploy.sh
-        env:
-          # Ansible이 EC2 내부에서 Tailscale 로그인 시 사용할 키 주입
-          TAILSCALE_AUTHKEY: ${{ secrets.TAILSCALE_AUTHKEY }}
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_DEFAULT_REGION: ${{ secrets.AWS_DEFAULT_REGION }}
