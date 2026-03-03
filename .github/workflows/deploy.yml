@@ -44,6 +44,11 @@ jobs:
         run: |
           terraform state rm tailscale_acl.main_acl || true
           terraform import tailscale_acl.main_acl acl
+          
+      - name: Terraform Apply
+        working-directory: terraform
+        # 이제 테라폼이 서버의 'hash' 값을 알기 때문에 412 에러 없이 코드를 반영합니다.
+        run: terraform apply -auto-approve
 
   # -------------------------------------------------------------------
   # 2) Ansible Job: 클러스터 구성 및 앱 배포
