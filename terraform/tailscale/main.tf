@@ -1,51 +1,54 @@
-# =====================================================
-# 1. 테라폼 및 프로바이더 설정 (중복 방지를 위해 이곳에만 정의)
-# =====================================================
+# terraform/tailscale/main.tf
+
 terraform {
   required_providers {
     tailscale = {
       source  = "tailscale/tailscale"
       version = "~> 0.13.0"
     }
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+    }
   }
 }
 
 provider "tailscale" {
-  api_key = var.ts_client_secret 
-  tailnet = var.ts_tailnet
+  oauth_client_id     = var.ts_client_id
+  oauth_client_secret = var.ts_client_secret
+  tailnet             = var.ts_tailnet
 }
 
-# =====================================================
-# 2. Tailscale ACL 설정 (보안 및 접속 권한)
-# =====================================================
-resource "tailscale_acl" "main" {
+provider "aws" {
+  region = "ap-northeast-2"
+}
+
+# 1. AWS 데이터 조회 (이건 그대로 두세요)
+data "aws_instances" "k3s_nodes" {
+  filter {
+    name   = "tag:Name"
+    values = ["k3s-*"] 
+  }
+  instance_state_names = ["running"]
+}
+
+# 2. Tailscale ACL 설정 (여기를 수정합니다)
+resource "tailscale_acl" "main_acl" {
   acl = jsonencode({
-    # 1) 그룹 정의 (관리자 그룹)
+    # [수정] group:admin이 정의되지 않아 400 에러가 났었습니다.
+    # 본인의 Tailscale 계정 이메일을 넣어주세요.
     groups = {
-      "group:admin" = ["your-email@gmail.com"] # 본인의 Tailscale 계정 이메일
+      "group:admin" = ["your-email@example.com"] 
     },
-
-    # 2) 태그 정의 (K3s 노드용)
-    tagOwners = {
-      "tag:k3s" = ["group:admin"]
-    },
-
-    # 3) 접속 규칙 (ACL)
+    
+    tagOwners = { "tag:k3s" = ["group:admin"] },
+    
     acls = [
       {
-        "action": "accept",
-        "src":    ["group:admin", "tag:k3s"],
-        "dst":    ["*:*"]
-      }
-    ],
-
-    # 4) Tailscale SSH 설정 (중요: 이걸 해야 패스워드 없이 SSH 가능)
-    ssh = [
-      {
-        "action": "check",
-        "src":    ["group:admin"],
-        "dst":    ["tag:k3s"],
-        "users":  ["ubuntu", "root"]
+        action = "accept",
+        src    = ["tag:k3s"],
+        # [수정] 콜론(:) 문제를 해결한 표준 태그 문법입니다.
+        dst    = ["tag:k3s:*"]
       }
     ]
   })
