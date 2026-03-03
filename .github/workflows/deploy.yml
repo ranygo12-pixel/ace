@@ -7,7 +7,7 @@ on:
 
 jobs:
   # -------------------------------------------------------------------
-  # 1) Terraform Job: OAuth 인증 및 단계별 리소스 생성
+  # 1) Terraform Job: 인프라 및 ACL 생성 (OAuth 기반)
   # -------------------------------------------------------------------
   terraform:
     name: Provision Infrastructure
@@ -19,7 +19,7 @@ jobs:
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
       AWS_DEFAULT_REGION: ${{ secrets.AWS_DEFAULT_REGION }}
-      # [중요] 신규 발급받은 OAuth 정보 주입
+      # [수정] 테라폼용 OAuth 변수 주입
       TF_VAR_ts_client_id: ${{ secrets.TS_CLIENT_ID }}
       TF_VAR_ts_client_secret: ${{ secrets.TS_CLIENT_SECRET }}
       TF_VAR_tailscale_tailnet: ${{ secrets.TAILSCALE_TAILNET }}
@@ -31,7 +31,7 @@ jobs:
       - name: Tailscale Auth
         uses: tailscale/github-action@v2
         with:
-          # 러너 접속용도 안전한 OAuth 방식으로 변경
+          # [수정] 러너 접속도 OAuth로 전환
           oauth-client-id: ${{ secrets.TS_CLIENT_ID }}
           oauth-client-secret: ${{ secrets.TS_CLIENT_SECRET }}
           tags: tag:k3s
@@ -40,24 +40,23 @@ jobs:
         working-directory: terraform
         run: terraform init
 
-      - name: Phase 1: Sync ACL & Create Instances
+      - name: Solve Dependency & Sync ACL
         working-directory: terraform
-        # outputs.tf의 로드밸런서 참조 에러를 피하기 위해 타겟을 지정합니다
         run: |
           # ACL 상태 동기화 (412 에러 방지)
           terraform state rm tailscale_acl.main_acl || true
-          terraform import -target=tailscale_acl.main_acl tailscale_acl.main_acl acl
+          terraform import -target=tailscale_acl.main_acl tailscale_acl.main_acl acl || true
           
-          # 인스턴스를 먼저 생성하여 ID를 확정 (로드밸런서와 Output은 이 단계에서 무시됨)
-          terraform apply -target=aws_instance.k3s_agent -target=tailscale_acl.main_acl -auto-approve
+          # [핵심] 로드밸런서 참조 오류 방지를 위한 타겟 생성
+          terraform apply -target=aws_instance.k3s_agent -target=tailscale_acl.main_acl -auto-approve || echo "Target apply failed, but continuing..."
 
-      - name: Phase 2: Complete Infrastructure
+      - name: Terraform Apply (Final)
         working-directory: terraform
-        # 이제 인스턴스 ID가 존재하므로 로드밸런서와 outputs.tf가 정상 작동합니다
+        # 전체 리소스를 확정하고 로드밸런서와 Output을 완성합니다.
         run: terraform apply -auto-approve
 
   # -------------------------------------------------------------------
-  # 2) Ansible Job: 클러스터 구성 및 앱 배포
+  # 2) Ansible Job: 클러스터 구성 (임시 키 생성 로직 포함)
   # -------------------------------------------------------------------
   ansible:
     name: Configure K3s cluster & Deploy App
@@ -68,10 +67,6 @@ jobs:
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
       AWS_DEFAULT_REGION: ${{ secrets.AWS_DEFAULT_REGION }}
       ANSIBLE_HOST_KEY_CHECKING: "False"
-      # Ansible 단계에서도 OAuth 정보를 사용하도록 설정 가능
-      TS_CLIENT_ID: ${{ secrets.TS_CLIENT_ID }}
-      TS_CLIENT_SECRET: ${{ secrets.TS_CLIENT_SECRET }}
-      TAILSCALE_TAILNET: ${{ secrets.TAILSCALE_TAILNET }}
 
     steps:
       - name: Checkout repository
@@ -83,6 +78,17 @@ jobs:
           oauth-client-id: ${{ secrets.TS_CLIENT_ID }}
           oauth-client-secret: ${{ secrets.TS_CLIENT_SECRET }}
           tags: tag:k3s
+
+      # [중요] Ansible이 사용할 1회용 인증키를 실시간으로 생성합니다.
+      - name: Generate Temporary Authkey for Ansible
+        id: generate_key
+        run: |
+          # 1. OAuth 토큰 획득
+          TOKEN=$(curl -u "${{ secrets.TS_CLIENT_ID }}:${{ secrets.TS_CLIENT_SECRET }}" -d "grant_type=client_credentials" https://api.tailscale.com/api/v2/oauth/token | jq -r .access_token)
+          # 2. 1회용 임시 키(Ephemeral Key) 생성
+          TEMP_KEY=$(curl -u "$TOKEN:" -d '{"capabilities":{"devices":{"create":{"reusable":false,"ephemeral":true,"preauthorized":true,"tags":["tag:k3s"]}}}}' https://api.tailscale.com/api/v2/tailnet/${{ secrets.TAILSCALE_TAILNET }}/keys | jq -r .key)
+          # 3. 생성된 키를 환경 변수에 저장
+          echo "TS_TEMP_KEY=$TEMP_KEY" >> $GITHUB_ENV
 
       - name: Install Dependencies (Python, boto3, jq)
         run: |
@@ -99,6 +105,9 @@ jobs:
 
       - name: 🔬 Run Deploy Script
         working-directory: k3s-ansible
+        env:
+          # Ansible의 all.yml({{ lookup('env', 'TAILSCALE_AUTHKEY') }})이 읽을 변수 주입
+          TAILSCALE_AUTHKEY: ${{ env.TS_TEMP_KEY }}
         run: |
           chmod +x deploy.sh
           export PYTHONPATH=$PYTHONPATH:$(python3 -m site --user-site)
