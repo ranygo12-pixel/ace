@@ -49,7 +49,7 @@ resource "aws_lb_listener" "nginx_listener" {
 # Agent만 Target Group에 등록
 # ===============================
 resource "aws_lb_target_group_attachment" "agents" {
-  count            = length(aws_instance.k3s_agent)
+  for_each = { for idx, inst in aws_instance.k3s_agent : idx => inst.id }
   target_group_arn = aws_lb_target_group.nginx_tg.arn
   target_id        = aws_instance.k3s_agent[count.index].id
   port             = 30080
