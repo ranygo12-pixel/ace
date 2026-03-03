@@ -1,5 +1,4 @@
 resource "tailscale_acl" "main_acl" {
-  tailnet = var.tailscale_tailnet  # 변수로 처리
   acl = jsonencode({
     # 태그 소유권 설정 (GHA와 서버에 부여할 권한)
     tagOwners = {
