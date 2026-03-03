@@ -7,7 +7,7 @@ on:
 
 jobs:
   # -------------------------------------------------------------------
-  # 1) AWS Infra Job: 순수 인프라 생성 (VPC, EC2, NLB 등)
+  # 1) AWS Infra Job: VPC, EC2, NLB 등 생성
   # -------------------------------------------------------------------
   aws_infra:
     name: Deploy AWS Infrastructure
@@ -33,11 +33,11 @@ jobs:
         run: terraform apply -auto-approve
 
   # -------------------------------------------------------------------
-  # 2) Tailscale Job: 인프라 확정 후 ACL 설정 (412 에러 해결)
+  # 2) Tailscale Job: ACL 설정 (412 에러 해결 루틴 포함)
   # -------------------------------------------------------------------
   tailscale_config:
     name: Configure Tailscale ACL
-    needs: aws_infra  # AWS 인프라 작업 완료 후 실행
+    needs: aws_infra
     runs-on: [ self-hosted, Linux, X64 ]
     env:
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -55,25 +55,18 @@ jobs:
         uses: tailscale/github-action@v2
         with:
           oauth-client-id: ${{ secrets.TS_CLIENT_ID }}
-          oauth-secret: ${{ secrets.TS_CLIENT_SECRET }}
+          oauth-secret: ${{ secrets.TS_CLIENT_SECRET }} # [수정] 공식 파라미터명 준수
           tags: tag:k3s
 
-      - name: Terraform Init
-        working-directory: terraform/tailscale
-        run: terraform init
-
-      - name: Sync & Apply ACL
+      - name: Terraform Init & Sync ACL
         working-directory: terraform/tailscale
         run: |
-          # 1. 로컬의 꼬인 상태 파일 삭제 및 초기화
+          # [수정] 412 에러 해결: 기존 상태 파일을 지우고 서버 상태를 강제로 가져옴
           rm -rf .terraform* terraform.tfstate*
           terraform init
-          
-          # 2. 서버의 현재 ACL 상태를 내 로컬로 강제 동기화 (412 에러 해결의 핵심)
           terraform import tailscale_acl.main_acl acl || echo "Fresh start"
           
-          # 3. 확정된 상태를 바탕으로 업데이트 적용
-          # 만약 실패할 경우를 대비해 state rm 후 재시도하는 안전장치를 추가합니다.
+          # [수정] Apply 실패 시 상태를 제거하고 재동기화하는 안전장치 추가
           terraform apply -auto-approve || (
             terraform state rm tailscale_acl.main_acl
             terraform import tailscale_acl.main_acl acl
@@ -81,12 +74,12 @@ jobs:
           )
 
   # -------------------------------------------------------------------
-  # 3) Ansible Job: 클러스터 구성
+  # 3) Ansible Job: 클러스터 구성 및 앱 배포
   # -------------------------------------------------------------------
   ansible:
     name: Configure K3s cluster & Deploy App
     runs-on: [ self-hosted, Linux, X64 ]
-    needs: tailscale_config # ACL 설정까지 성공해야 실행
+    needs: tailscale_config
     env:
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -101,8 +94,15 @@ jobs:
         uses: tailscale/github-action@v2
         with:
           oauth-client-id: ${{ secrets.TS_CLIENT_ID }}
-          oauth-secret: ${{ secrets.TS_CLIENT_SECRET }}
+          oauth-secret: ${{ secrets.TS_CLIENT_SECRET }} # [수정] 인증 파라미터 일치
           tags: tag:k3s
+
+      # [수정] UNREACHABLE 해결: 러너가 Tailscale 가상망과 라우팅을 인식할 시간 확보
+      - name: ⏳ Wait for Tailscale Network
+        run: |
+          echo "Waiting for Tailscale interface and routes to stabilize..."
+          sleep 30
+          tailscale status
 
       - name: Generate Temporary Authkey for Ansible
         id: generate_key
@@ -129,4 +129,5 @@ jobs:
         run: |
           chmod +x deploy.sh
           export PYTHONPATH=$PYTHONPATH:$(python3 -m site --user-site)
+          # [수정] 발급받은 임시 키를 환경 변수로 안전하게 전달
           TAILSCALE_AUTHKEY=$TS_TEMP_KEY ./deploy.sh
