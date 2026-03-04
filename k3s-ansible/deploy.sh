@@ -3,6 +3,9 @@
 # 에러 발생 시 즉시 중단
 set -e
 
+echo "DEBUG: ID length is ${#TS_CLIENT_ID}"
+
+
 # 동적 인벤토리 경로 정의
 INV="inventory/hosts.aws_ec2.yml"
 
