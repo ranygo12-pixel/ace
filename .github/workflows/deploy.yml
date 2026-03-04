@@ -85,21 +85,22 @@ jobs:
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
       AWS_DEFAULT_REGION: ${{ secrets.AWS_DEFAULT_REGION }}
       ANSIBLE_HOST_KEY_CHECKING: "False"
+      TS_CLIENT_ID: ${{ secrets.TS_CLIENT_ID }}
+      TS_CLIENT_SECRET: ${{ secrets.TS_CLIENT_SECRET }}
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          submodules: recursive
+          submodules: recursive  #
 
       - name: Tailscale Auth
         uses: tailscale/github-action@v2
         with:
           oauth-client-id: ${{ secrets.TS_CLIENT_ID }}
-          oauth-secret: ${{ secrets.TS_CLIENT_SECRET }} # [수정] 인증 파라미터 일치
+          oauth-secret: ${{ secrets.TS_CLIENT_SECRET }}
           tags: tag:k3s
 
-      # [수정] UNREACHABLE 해결: 러너가 Tailscale 가상망과 라우팅을 인식할 시간 확보
       - name: ⏳ Wait for Tailscale Network
         run: |
           echo "Waiting for Tailscale interface and routes to stabilize..."
@@ -119,17 +120,8 @@ jobs:
           echo "${{ secrets.ANSIBLE_PRIVATE_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
 
-      - name: 🔬 Run Deploy Script
+      - name: 🚀 Run Deploy Script
+        working-directory: ./k3s-ansible
         run: |
-          # 값을 찍지 말고 길이를 확인
-          echo "ID Length: ${#TS_CLIENT_ID}"
-          echo "Secret Length: ${#TS_CLIENT_SECRET}"
-          
-          if [ ${#TS_CLIENT_ID} -eq 0 ]; then
-            echo "Error: TS_CLIENT_ID is empty!"
-            exit 1
-          fi
-          ./deploy.sh
-        env:
-          TS_CLIENT_ID: ${{ secrets.TS_CLIENT_ID }}
-          TS_CLIENT_SECRET: ${{ secrets.TS_CLIENT_SECRET }}
+          chmod +x deploy.sh
+          ./deploy.sh  # 곧바로 실행
