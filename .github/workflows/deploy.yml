@@ -117,15 +117,17 @@ jobs:
           echo "${{ secrets.ANSIBLE_PRIVATE_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
 
-      # 4. 🔬 Run Deploy Script (OAuth 정보를 직접 전달)
       - name: 🔬 Run Deploy Script
-        working-directory: k3s-ansible
         run: |
-          chmod +x deploy.sh
-          export PYTHONPATH=$PYTHONPATH:$(python3 -m site --user-site)
+          # 값을 찍지 말고 길이를 확인
+          echo "ID Length: ${#TS_CLIENT_ID}"
+          echo "Secret Length: ${#TS_CLIENT_SECRET}"
           
-          # [수정] 임시 키 대신 OAuth ID와 Secret을 직접 환경 변수로 전달합니다.
-          export TS_CLIENT_ID="${{ secrets.TS_CLIENT_ID }}"
-          export TS_CLIENT_SECRET="${{ secrets.TS_CLIENT_SECRET }}"
-          
+          if [ ${#TS_CLIENT_ID} -eq 0 ]; then
+            echo "Error: TS_CLIENT_ID is empty!"
+            exit 1
+          fi
           ./deploy.sh
+        env:
+          TS_CLIENT_ID: ${{ secrets.TS_CLIENT_ID }}
+          TS_CLIENT_SECRET: ${{ secrets.TS_CLIENT_SECRET }}
