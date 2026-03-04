@@ -29,7 +29,7 @@
 - name: ⏳ Wait for K3s API and Nodes to be Ready
   ansible.builtin.pause:
     seconds: 60
-  comment: "네트워크 변경 후 API 서버와 노드들이 완전히 안정을 찾을 시간을 줍니다."
+# 네트워크 변경 후 API 서버와 노드들이 완전히 안정을 찾을 시간을 줍니다.
 
 # 4. 통합 배포 (lookup을 사용하여 파일 내용 직접 주입)
 - name: Deploy kube-prometheus-stack
