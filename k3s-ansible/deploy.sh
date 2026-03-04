@@ -44,10 +44,11 @@ ansible all -i $INV -m ping
 
 # 4. 전체 플레이북 실행
 echo "📦 K3s 전체 설치 프로세스 가동 (site.yml)..."
+#따옴표 중첩
 ansible-playbook -i $INV site.yml \
   -e "@group_vars/all.yml" \
-  -e "tailscale_client_id=${TS_CLIENT_ID}" \
-  -e "tailscale_client_secret=${TS_CLIENT_SECRET}" \
+  -e "tailscale_client_id='${TS_CLIENT_ID}'" \
+  -e "tailscale_client_secret='${TS_CLIENT_SECRET}'" \
   -v
   
 echo ""
