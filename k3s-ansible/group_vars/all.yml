@@ -52,7 +52,9 @@ etcd_backup_enabled: true
 backup_retention_days: 7
 
 # 8. Tailscale 설정
-tailscale_authkey: "{{ lookup('env', 'TAILSCALE_AUTHKEY') }}"
+# Tailscale OAuth 설정
+tailscale_client_id: "{{ lookup('env', 'TS_CLIENT_ID') }}"
+tailscale_client_secret: "{{ lookup('env', 'TS_CLIENT_SECRET') }}"
 tailscale_tags: "tag:k3s"
 
 # K3s가 Tailscale IP를 주소로 인식하도록 강제 (중요)
