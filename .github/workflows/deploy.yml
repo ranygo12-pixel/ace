@@ -124,4 +124,7 @@ jobs:
         working-directory: ./k3s-ansible
         run: |
           chmod +x deploy.sh
-          ./deploy.sh  # 곧바로 실행
+          # 실행 시점에 환경 변수를 다시 한번 할당하며 호출
+          TS_CLIENT_ID="${{ secrets.TS_CLIENT_ID }}" \
+          TS_CLIENT_SECRET="${{ secrets.TS_CLIENT_SECRET }}" \
+          ./deploy.sh
