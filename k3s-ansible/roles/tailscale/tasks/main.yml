@@ -6,7 +6,7 @@
 - name: Tailscale 네트워크 가입 (OAuth 직접 인증)
   command: >
     tailscale up 
-    --authkey=tskey-client-{{ tailscale_client_id }}-{{ tailscale_client_secret }}
+    --authkey={{ tailscale_client_secret }}
     --advertise-tags={{ tailscale_tags }} 
     --accept-dns=true
   become: true
