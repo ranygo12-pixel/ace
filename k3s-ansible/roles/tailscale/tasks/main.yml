@@ -3,10 +3,15 @@
   shell: curl -fsSL https://tailscale.com/install.sh | sh
   become: true
 
-- name: Tailscale 네트워크 가입
+- name: Tailscale 네트워크 가입 (OAuth 직접 인증)
   command: >
     tailscale up 
-    --authkey={{ tailscale_authkey }} 
-    --advertise-tags={{ tailscale_tags }}
+    --authkey=tskey-client-{{ tailscale_client_id }}-{{ tailscale_client_secret }}
+    --advertise-tags={{ tailscale_tags }} 
     --accept-dns=true
   become: true
+  register: ts_start
+  # 이미 로그인된 경우 에러를 무시하는 안전장치
+  failed_when: 
+    - ts_start.rc != 0 
+    - "'already logged in' not in ts_start.stderr"
