@@ -22,7 +22,6 @@ k3s_server_args: >
   --disable-cloud-controller
   --write-kubeconfig-mode 644
   --node-ip={{ ansible_host }}
-  --node-external-ip={{ tailscale_ip | default(ansible_host) }}
   --flannel-iface=eth0
 
 # 5. 방화벽 포트 설정 (Server/Agent 명칭 통일)
