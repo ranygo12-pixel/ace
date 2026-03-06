@@ -2,6 +2,13 @@
 prometheus:
   prometheusSpec:
     retention: 10d
+    
+    # [핵심 추가] 모든 네임스페이스의 데이터를 수집하도록 선택 기준을 해제합니다.
+    # 이 설정이 없으면 타 네임스페이스의 Pod/Service 정보가 인식되지 않습니다.
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+
     # 스토리지 스펙 구체화 (Data Persistence)
     storageSpec:
       volumeClaimTemplate:
@@ -27,7 +34,8 @@ grafana:
     size: 10Gi
     storageClassName: "local-path"
     
-# 대시보드 공급자 설정  dashboardProviders:
+  # 대시보드 공급자 설정
+  dashboardProviders:
     dashboardproviders.yaml:
       apiVersion: 1
       providers:
@@ -40,7 +48,7 @@ grafana:
           options:
             path: /var/lib/grafana/dashboards/default
             
-#대시보드 자동 로드 (Zero-configuration)
+  # 대시보드 자동 로드 (Zero-configuration)
   dashboards:
     default:
       k3s-cluster-19972:
@@ -49,3 +57,8 @@ grafana:
         datasource:
           - name: DS_PROMETHEUS
             value: Prometheus
+
+# 3. K3s 호환성 및 지표 수집 컴포넌트 활성화
+# 네임스페이스 상태 정보를 생성하는 kube-state-metrics가 정상 작동해야 합니다.
+kube-state-metrics:
+  enabled: true
